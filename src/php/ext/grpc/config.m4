@@ -82,11 +82,24 @@ if test "$PHP_GRPC" != "no"; then
     -L$GRPC_LIBDIR
   ])
 
+  PHP_CHECK_LIBRARY(grpc,grpc_tls_certificate_verifier_no_op_create,
+  [],[
+    AC_MSG_ERROR([gRPC TLS credentials APIs are required; rebuild with a compatible gRPC core])
+  ],[
+    -L$GRPC_LIBDIR
+  ])
+
   grpc_save_CPPFLAGS="$CPPFLAGS"
   CPPFLAGS="$CPPFLAGS -I$GRPC_DIR/include"
   AC_CHECK_HEADERS([grpc/credentials.h])
   AC_CHECK_DECLS([gpr_set_log_function, grpc_absl_log], [], [],
     [[#include <grpc/support/log.h>]])
+  AC_CHECK_DECLS([grpc_tls_certificate_provider_in_memory_create], [], [], [[
+    #include <grpc/grpc_security.h>
+    #ifdef HAVE_GRPC_CREDENTIALS_H
+    #include <grpc/credentials.h>
+    #endif
+  ]])
   AC_CHECK_TYPES([grpc_google_default_credentials_options], [], [], [[
     #include <grpc/grpc_security.h>
     #ifdef HAVE_GRPC_CREDENTIALS_H

@@ -322,6 +322,11 @@ class ChannelTest extends \PHPUnit\Framework\TestCase
     {
         return [
             [
+                Grpc\ChannelCredentials::createSsl(null, null, null, true),
+                Grpc\ChannelCredentials::createSsl(null, null, null, true),
+                50308,
+            ],
+            [
                 Grpc\ChannelCredentials::createSsl(),
                 Grpc\ChannelCredentials::createSsl(),
                 50301,
@@ -421,6 +426,20 @@ class ChannelTest extends \PHPUnit\Framework\TestCase
     public function persistentChannelDifferentChannelCredentialsProvider(): array
     {
         return [
+            [
+                Grpc\ChannelCredentials::createSsl(
+                    file_get_contents(__DIR__.'/../data/ca.pem'),
+                    file_get_contents(__DIR__.'/../data/server1.key'),
+                    file_get_contents(__DIR__.'/../data/server1.pem'),
+                    true
+                ),
+                Grpc\ChannelCredentials::createSsl(
+                    file_get_contents(__DIR__.'/../data/ca.pem'),
+                    file_get_contents(__DIR__.'/../data/server1.key'),
+                    file_get_contents(__DIR__.'/../data/server1.pem')
+                ),
+                50357,
+            ],
             [
                 Grpc\ChannelCredentials::createSsl(),
                 Grpc\ChannelCredentials::createSsl(

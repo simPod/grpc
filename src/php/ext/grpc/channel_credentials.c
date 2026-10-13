@@ -148,6 +148,9 @@ PHP_METHOD(ChannelCredentials, createDefault) {
  *                                              private key (optional)
  * @param string|null $cert_chain = null PEM encoding of the client's
  *                                             certificate chain (optional)
+ * @param bool $skip_verify = false Disable server certificate chain and hostname
+ *                                 verification, but retain TLS encryption.
+ *                                 Unsafe: permits man-in-the-middle attacks.
  * @return ChannelCredentials The new SSL credentials object
  */
 PHP_METHOD(ChannelCredentials, createSsl) {
@@ -157,38 +160,123 @@ PHP_METHOD(ChannelCredentials, createSsl) {
   php_grpc_int root_certs_length = 0;
   php_grpc_int private_key_length = 0;
   php_grpc_int cert_chain_length = 0;
+  zend_bool skip_verify = false;
 
   pem_key_cert_pair.private_key = pem_key_cert_pair.cert_chain = NULL;
 
   grpc_set_ssl_roots_override_callback(get_ssl_roots_override);
 
-  /* "|s!s!s!" == 3 optional nullable strings */
-  if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|s!s!s!",
+  /* Three optional nullable strings and one optional boolean. */
+  if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|s!s!s!b",
                             &pem_root_certs, &root_certs_length,
                             &pem_key_cert_pair.private_key,
                             &private_key_length,
                             &pem_key_cert_pair.cert_chain,
-                            &cert_chain_length) == FAILURE) {
+                            &cert_chain_length, &skip_verify) == FAILURE) {
     zend_throw_exception(spl_ce_InvalidArgumentException,
-                         "createSsl expects 3 optional strings", 1 TSRMLS_CC);
+                         "createSsl expects 3 optional strings and an optional bool",
+                         1 TSRMLS_CC);
     return;
   }
 
-  php_grpc_int hashkey_len = root_certs_length + cert_chain_length;
+  if (skip_verify && pem_key_cert_pair.private_key != NULL &&
+      pem_key_cert_pair.cert_chain == NULL) {
+    zend_throw_exception(spl_ce_InvalidArgumentException,
+                         "createSsl requires a certificate chain with a private key",
+                         1 TSRMLS_CC);
+    return;
+  }
+
+  /* Include all PEM material and the verification policy in the pool key. */
+  php_grpc_int hashkey_len = root_certs_length + private_key_length + cert_chain_length + 3;
   char *hashkey = emalloc(hashkey_len + 1);
+  size_t offset = 0;
   if (root_certs_length > 0) {
-    strcpy(hashkey, pem_root_certs);
+    memcpy(hashkey + offset, pem_root_certs, root_certs_length);
+    offset += root_certs_length;
   }
+  hashkey[offset++] = '\0';
+  if (private_key_length > 0) {
+    memcpy(hashkey + offset, pem_key_cert_pair.private_key, private_key_length);
+    offset += private_key_length;
+  }
+  hashkey[offset++] = '\0';
   if (cert_chain_length > 0) {
-    strcpy(hashkey, pem_key_cert_pair.cert_chain);
+    memcpy(hashkey + offset, pem_key_cert_pair.cert_chain, cert_chain_length);
+    offset += cert_chain_length;
   }
+  hashkey[offset++] = skip_verify ? 1 : 0;
+  hashkey[offset] = '\0';
 
   char *hashstr = malloc(41);
   generate_sha1_str(hashstr, hashkey, hashkey_len);
 
-  grpc_channel_credentials *creds = grpc_ssl_credentials_create(
-      pem_root_certs,
-      pem_key_cert_pair.private_key == NULL ? NULL : &pem_key_cert_pair, NULL, NULL);
+  grpc_channel_credentials *creds;
+  if (skip_verify) {
+    grpc_tls_credentials_options *options = grpc_tls_credentials_options_create();
+    grpc_tls_identity_pairs *identity_pairs = NULL;
+    if (pem_key_cert_pair.private_key != NULL) {
+      identity_pairs = grpc_tls_identity_pairs_create();
+      grpc_tls_identity_pairs_add_pair(identity_pairs, pem_key_cert_pair.private_key,
+                                       pem_key_cert_pair.cert_chain);
+#if !HAVE_DECL_GRPC_TLS_CERTIFICATE_PROVIDER_IN_MEMORY_CREATE
+      grpc_tls_credentials_options_watch_identity_key_cert_pairs(options);
+#endif
+    }
+    if (pem_root_certs != NULL || identity_pairs != NULL) {
+#if HAVE_DECL_GRPC_TLS_CERTIFICATE_PROVIDER_IN_MEMORY_CREATE
+      grpc_tls_certificate_provider *provider =
+          grpc_tls_certificate_provider_in_memory_create();
+      /* The provider copies PEM strings and takes ownership of identity_pairs. */
+      bool configured = true;
+      if (pem_root_certs != NULL) {
+        configured = grpc_tls_certificate_provider_in_memory_set_root_certificate(
+            provider, pem_root_certs);
+      }
+      if (identity_pairs != NULL) {
+        configured = grpc_tls_certificate_provider_in_memory_set_identity_certificate(
+            provider, identity_pairs) && configured;
+      }
+      if (!configured) {
+        grpc_tls_certificate_provider_release(provider);
+        grpc_tls_credentials_options_destroy(options);
+        free(hashstr);
+        efree(hashkey);
+        zend_throw_exception(spl_ce_InvalidArgumentException,
+                             "createSsl could not configure TLS certificate material",
+                             1 TSRMLS_CC);
+        return;
+      }
+      if (pem_root_certs != NULL) {
+        grpc_tls_credentials_options_set_root_certificate_provider(options, provider);
+      }
+      if (pem_key_cert_pair.private_key != NULL) {
+        grpc_tls_credentials_options_set_identity_certificate_provider(options, provider);
+      }
+      grpc_tls_certificate_provider_release(provider);
+#else
+      /* The provider copies PEM strings and takes ownership of identity_pairs. */
+      grpc_tls_certificate_provider *provider =
+          grpc_tls_certificate_provider_static_data_create(pem_root_certs, identity_pairs);
+      grpc_tls_credentials_options_set_certificate_provider(options, provider);
+      grpc_tls_certificate_provider_release(provider);
+      if (pem_root_certs != NULL) {
+        grpc_tls_credentials_options_watch_root_certs(options);
+      }
+#endif
+    }
+    grpc_tls_credentials_options_set_verify_server_cert(options, 0);
+    grpc_tls_certificate_verifier *verifier = grpc_tls_certificate_verifier_no_op_create();
+    grpc_tls_credentials_options_set_certificate_verifier(options, verifier);
+    grpc_tls_certificate_verifier_release(verifier);
+    grpc_tls_credentials_options_set_check_call_host(options, 0);
+    /* The credentials take ownership of options. */
+    creds = grpc_tls_credentials_create(options);
+  } else {
+    creds = grpc_ssl_credentials_create(
+        pem_root_certs,
+        pem_key_cert_pair.private_key == NULL ? NULL : &pem_key_cert_pair, NULL, NULL);
+  }
   zval *creds_object = grpc_php_wrap_channel_credentials(creds, hashstr, false
                                                          TSRMLS_CC);
   efree(hashkey);
@@ -290,9 +378,17 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_createDefault, 0, 0, 0)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_createSsl, 0, 0, 0)
+#if PHP_MAJOR_VERSION >= 8
+  ZEND_ARG_INFO_WITH_DEFAULT_VALUE(0, pem_root_certs, "null")
+  ZEND_ARG_INFO_WITH_DEFAULT_VALUE(0, pem_private_key, "null")
+  ZEND_ARG_INFO_WITH_DEFAULT_VALUE(0, pem_cert_chain, "null")
+  ZEND_ARG_INFO_WITH_DEFAULT_VALUE(0, skip_verify, "false")
+#else
   ZEND_ARG_INFO(0, pem_root_certs)
   ZEND_ARG_INFO(0, pem_private_key)
   ZEND_ARG_INFO(0, pem_cert_chain)
+  ZEND_ARG_INFO(0, skip_verify)
+#endif
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_createComposite, 0, 0, 2)

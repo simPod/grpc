@@ -317,6 +317,37 @@ $client = new Helloworld\GreeterClient('localhost:50051', [
 ]);
 ```
 
+`ChannelCredentials::createSsl($pem_root_certs = null, $pem_private_key = null,
+$pem_cert_chain = null, $skip_verify = false)` verifies the server certificate
+chain and hostname by default. To connect to a server without authenticating its
+certificate, explicitly pass `true` as the fourth argument:
+
+```php
+$credentials = Grpc\ChannelCredentials::createSsl(null, null, null, true);
+```
+
+On PHP 8 and later, the same option can be passed by name without certificate
+arguments:
+
+```php
+$credentials = Grpc\ChannelCredentials::createSsl(skip_verify: true);
+```
+
+This retains TLS encryption, but disables certificate chain, connection hostname,
+and per-call hostname verification. **It permits man-in-the-middle attacks.** Use
+trusted root certificates instead whenever possible. `createInsecure()` is not an
+alternative: it uses plaintext, without TLS encryption. Client private keys and
+certificate chains still work with `skip_verify`, including composite call
+credentials. Verified and unverified credentials never share a persistent channel.
+
+The extension uses the experimental gRPC core TLS credentials APIs for this
+opt-in mode. Build it with a matching core that provides these APIs; older core
+libraries without them are not supported. No PHP certificate-verification
+callback is run on gRPC background threads.
+
+External-core builds detect the available credential APIs. Current cores use the
+in-memory TLS provider; older cores retain the static-data provider.
+
 ### Call credentials plugins
 
 `CallCredentials::createFromPlugin()` supplies RPC metadata through a PHP
