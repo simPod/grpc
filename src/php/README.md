@@ -317,6 +317,14 @@ $client = new Helloworld\GreeterClient('localhost:50051', [
 ]);
 ```
 
+### Call credentials plugins
+
+`CallCredentials::createFromPlugin()` supplies RPC metadata through a PHP
+callback. On PHP 8.3 and later, the upstream wrapper temporarily disables Zend's
+stack limit during that callback and restores it on a normal return. Recursive
+callbacks therefore lack stack-limit protection during that interval.
+Certificate verification is not changed.
+
 ### pcntl_fork() support
 
 To make sure the `grpc` extension works with `pcntl_fork()` and related
@@ -336,14 +344,15 @@ all possible values of the `grpc.grpc.trace` option, please check
 ```
 grpc.grpc_verbosity=debug
 grpc.grpc_trace=all,-polling,-polling_api,-pollable_refcount,-timer,-timer_check
-grpc.log_filename=/var/log/grpc.log
 ```
 
-> Make sure the log file above is writable, by doing the following:
-> ```
-> $ sudo touch /var/log/grpc.log
-> $ sudo chmod 666 /var/log/grpc.log
-> ```
+On cores without the custom logging hook, logs use the core's native output.
+Setting `grpc.log_filename` on these cores produces a warning.
+
+Older cores with the hook can redirect logs with
+`grpc.log_filename=/var/log/grpc.log`. Create that file with write access only for
+the PHP process user; do not make it world-writable.
+
 > Note: The log file does grow pretty quickly depending on how much logs are
 > being printed out. Make sure you have other mechanisms (perhaps another
 > cronjob) to zero out the log file from time to time,

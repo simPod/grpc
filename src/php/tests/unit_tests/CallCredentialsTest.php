@@ -102,9 +102,9 @@ class CallCredentialsTest extends \PHPUnit\Framework\TestCase
         $event = $server_call->startBatch([
             Grpc\OP_SEND_INITIAL_METADATA => [],
             Grpc\OP_SEND_STATUS_FROM_SERVER => [
-                'metadata' => [],
+                'metadata' => ['test-status' => [$status_text]],
                 'code' => Grpc\STATUS_OK,
-                'details' => $status_text,
+                'details' => '',
             ],
             Grpc\OP_RECV_CLOSE_ON_SERVER => true,
         ]);
@@ -120,9 +120,8 @@ class CallCredentialsTest extends \PHPUnit\Framework\TestCase
 
         $this->assertSame([], $event->metadata);
         $status = $event->status;
-        $this->assertSame([], $status->metadata);
+        $this->assertSame(['test-status' => [$status_text]], $status->metadata);
         $this->assertSame(Grpc\STATUS_OK, $status->code);
-        $this->assertSame($status_text, $status->details);
 
         unset($call);
         unset($server_call);

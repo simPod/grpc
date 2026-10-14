@@ -31,6 +31,9 @@
 #include <ext/standard/info.h>
 
 #include <grpc/grpc.h>
+#ifdef HAVE_GRPC_CREDENTIALS_H
+#include <grpc/credentials.h>
+#endif
 
 #include "php7_wrapper.h"
 #include "version.h"

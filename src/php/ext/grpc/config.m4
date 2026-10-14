@@ -82,6 +82,19 @@ if test "$PHP_GRPC" != "no"; then
     -L$GRPC_LIBDIR
   ])
 
+  grpc_save_CPPFLAGS="$CPPFLAGS"
+  CPPFLAGS="$CPPFLAGS -I$GRPC_DIR/include"
+  AC_CHECK_HEADERS([grpc/credentials.h])
+  AC_CHECK_DECLS([gpr_set_log_function, grpc_absl_log], [], [],
+    [[#include <grpc/support/log.h>]])
+  AC_CHECK_TYPES([grpc_google_default_credentials_options], [], [], [[
+    #include <grpc/grpc_security.h>
+    #ifdef HAVE_GRPC_CREDENTIALS_H
+    #include <grpc/credentials.h>
+    #endif
+  ]])
+  CPPFLAGS="$grpc_save_CPPFLAGS"
+
   PHP_SUBST(GRPC_SHARED_LIBADD)
 
   PHP_NEW_EXTENSION(grpc, byte_buffer.c call.c call_credentials.c channel.c \
