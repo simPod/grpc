@@ -248,6 +248,7 @@ void apply_ini_settings(TSRMLS_D) {
   }
 }
 
+#if !defined(HAVE_DECL_GPR_SET_LOG_FUNCTION) || HAVE_DECL_GPR_SET_LOG_FUNCTION
 static void custom_logger(gpr_log_func_args* args) {
   TSRMLS_FETCH();
 
@@ -280,6 +281,7 @@ static void custom_logger(gpr_log_func_args* args) {
   gpr_free(prefix);
   gpr_free(final);
 }
+#endif
 
 /* {{{ PHP_MINIT_FUNCTION
  */
@@ -596,7 +598,12 @@ PHP_RINIT_FUNCTION(grpc) {
   if (!GRPC_G(initialized)) {
     apply_ini_settings(TSRMLS_C);
     if (GRPC_G(log_filename)) {
+#if !defined(HAVE_DECL_GPR_SET_LOG_FUNCTION) || HAVE_DECL_GPR_SET_LOG_FUNCTION
       gpr_set_log_function(custom_logger);
+#else
+      php_error_docref(NULL, E_WARNING,
+                      "grpc.log_filename is not supported by this gRPC core; logs use native output");
+#endif
     }
     grpc_init();
     register_fork_handlers();
