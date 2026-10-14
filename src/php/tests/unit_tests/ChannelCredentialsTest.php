@@ -68,4 +68,11 @@ class ChannelCredentialsTest extends \PHPUnit\Framework\TestCase
         $channel_credentials = Grpc\ChannelCredentials::createComposite(
             'something', 'something');
     }
+
+    public function testRejectsIncompleteClientIdentityWhenSkippingVerification()
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('createSsl requires a certificate chain with a private key');
+        Grpc\ChannelCredentials::createSsl(null, 'private-key', null, true);
+    }
 }

@@ -18,6 +18,7 @@
  */
 class SecureEndToEndTest extends \PHPUnit\Framework\TestCase
 {
+    // Current cores can omit successful status details; verify text in trailing metadata.
     private $server;
     private $port;
     private $host_override;
@@ -77,9 +78,9 @@ class SecureEndToEndTest extends \PHPUnit\Framework\TestCase
         $event = $server_call->startBatch([
             Grpc\OP_SEND_INITIAL_METADATA => [],
             Grpc\OP_SEND_STATUS_FROM_SERVER => [
-                'metadata' => [],
+                'metadata' => ['test-status' => [$status_text]],
                 'code' => Grpc\STATUS_OK,
-                'details' => $status_text,
+                'details' => '',
             ],
             Grpc\OP_RECV_CLOSE_ON_SERVER => true,
         ]);
@@ -95,9 +96,8 @@ class SecureEndToEndTest extends \PHPUnit\Framework\TestCase
 
         $this->assertSame([], $event->metadata);
         $status = $event->status;
-        $this->assertSame([], $status->metadata);
+        $this->assertSame(['test-status' => [$status_text]], $status->metadata);
         $this->assertSame(Grpc\STATUS_OK, $status->code);
-        $this->assertSame($status_text, $status->details);
 
         unset($call);
         unset($server_call);
@@ -130,9 +130,9 @@ class SecureEndToEndTest extends \PHPUnit\Framework\TestCase
         $event = $server_call->startBatch([
             Grpc\OP_SEND_INITIAL_METADATA => [],
             Grpc\OP_SEND_STATUS_FROM_SERVER => [
-                'metadata' => [],
+                'metadata' => ['test-status' => [$status_text]],
                 'code' => Grpc\STATUS_OK,
-                'details' => $status_text,
+                'details' => '',
             ],
         ]);
 
@@ -143,9 +143,8 @@ class SecureEndToEndTest extends \PHPUnit\Framework\TestCase
 
         $this->assertSame([], $event->metadata);
         $status = $event->status;
-        $this->assertSame([], $status->metadata);
+        $this->assertSame(['test-status' => [$status_text]], $status->metadata);
         $this->assertSame(Grpc\STATUS_OK, $status->code);
-        $this->assertSame($status_text, $status->details);
 
         unset($call);
         unset($server_call);
@@ -187,9 +186,9 @@ class SecureEndToEndTest extends \PHPUnit\Framework\TestCase
             Grpc\OP_SEND_INITIAL_METADATA => [],
             Grpc\OP_SEND_MESSAGE => ['message' => $reply_text],
             Grpc\OP_SEND_STATUS_FROM_SERVER => [
-                'metadata' => [],
+                'metadata' => ['test-status' => [$status_text]],
                 'code' => Grpc\STATUS_OK,
-                'details' => $status_text,
+                'details' => '',
             ],
             Grpc\OP_RECV_CLOSE_ON_SERVER => true,
         ]);
@@ -208,9 +207,8 @@ class SecureEndToEndTest extends \PHPUnit\Framework\TestCase
         $this->assertSame([], $event->metadata);
         $this->assertSame($reply_text, $event->message);
         $status = $event->status;
-        $this->assertSame([], $status->metadata);
+        $this->assertSame(['test-status' => [$status_text]], $status->metadata);
         $this->assertSame(Grpc\STATUS_OK, $status->code);
-        $this->assertSame($status_text, $status->details);
 
         unset($call);
         unset($server_call);

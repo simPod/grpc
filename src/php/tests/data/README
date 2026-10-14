@@ -1,1 +1,9 @@
 CONFIRMEDTESTKEY
+
+tls_skip_verify.key and tls_skip_verify.pem are test-only self-signed server
+credentials for untrusted.example.com. They are not production credentials.
+Generate them with:
+
+openssl req -x509 -newkey rsa:2048 -nodes \
+  -keyout tls_skip_verify.key -out tls_skip_verify.pem -days 36500 \
+  -subj '/CN=untrusted.example.com' -addext 'subjectAltName=DNS:untrusted.example.com'

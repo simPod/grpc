@@ -317,6 +317,45 @@ $client = new Helloworld\GreeterClient('localhost:50051', [
 ]);
 ```
 
+`ChannelCredentials::createSsl($pem_root_certs = null, $pem_private_key = null,
+$pem_cert_chain = null, $skip_verify = false)` verifies the server certificate
+chain and hostname by default. To connect to a server without authenticating its
+certificate, explicitly pass `true` as the fourth argument:
+
+```php
+$credentials = Grpc\ChannelCredentials::createSsl(null, null, null, true);
+```
+
+On PHP 8 and later, the same option can be passed by name without certificate
+arguments:
+
+```php
+$credentials = Grpc\ChannelCredentials::createSsl(skip_verify: true);
+```
+
+This retains TLS encryption, but disables certificate chain, connection hostname,
+and per-call hostname verification. **It permits man-in-the-middle attacks.** Use
+trusted root certificates instead whenever possible. `createInsecure()` is not an
+alternative: it uses plaintext, without TLS encryption. Client private keys and
+certificate chains still work with `skip_verify`, including composite call
+credentials. Verified and unverified credentials never share a persistent channel.
+
+The extension uses the experimental gRPC core TLS credentials APIs for this
+opt-in mode. Build it with a matching core that provides these APIs; older core
+libraries without them are not supported. No PHP certificate-verification
+callback is run on gRPC background threads.
+
+External-core builds detect the available credential APIs. Current cores use the
+in-memory TLS provider; older cores retain the static-data provider.
+
+### Call credentials plugins
+
+`CallCredentials::createFromPlugin()` supplies RPC metadata through a PHP
+callback. On PHP 8.3 and later, the upstream wrapper temporarily disables Zend's
+stack limit during that callback and restores it on a normal return. Recursive
+callbacks therefore lack stack-limit protection during that interval.
+Certificate verification is not changed.
+
 ### pcntl_fork() support
 
 To make sure the `grpc` extension works with `pcntl_fork()` and related
@@ -336,14 +375,15 @@ all possible values of the `grpc.grpc.trace` option, please check
 ```
 grpc.grpc_verbosity=debug
 grpc.grpc_trace=all,-polling,-polling_api,-pollable_refcount,-timer,-timer_check
-grpc.log_filename=/var/log/grpc.log
 ```
 
-> Make sure the log file above is writable, by doing the following:
-> ```
-> $ sudo touch /var/log/grpc.log
-> $ sudo chmod 666 /var/log/grpc.log
-> ```
+On cores without the custom logging hook, logs use the core's native output.
+Setting `grpc.log_filename` on these cores produces a warning.
+
+Older cores with the hook can redirect logs with
+`grpc.log_filename=/var/log/grpc.log`. Create that file with write access only for
+the PHP process user; do not make it world-writable.
+
 > Note: The log file does grow pretty quickly depending on how much logs are
 > being printed out. Make sure you have other mechanisms (perhaps another
 > cronjob) to zero out the log file from time to time,
